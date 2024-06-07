@@ -1317,6 +1317,16 @@ class ShiftAllocationForm(ModelForm):
             "requested_till": _trans("Requested Till"),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["shift_id"].widget.attrs.update(
+            {
+                "hx-target": "#id_reallocate_to_parent_div",
+                "hx-trigger": "change",
+                "hx-get": "/update-employee-allocation",
+            }
+        )
+
     def as_p(self):
         """
         Render the form fields as HTML table rows with Bootstrap styling.
@@ -1716,7 +1726,9 @@ class MultipleApproveConditionForm(ModelForm):
         widget=forms.Select(
             attrs={
                 "class": "oh-select oh-select-2 mb-2",
-                "onChange": "toggleFields($('#id_condition_operator'))",
+                "hx-trigger": "change",
+                "hx-target": "#conditionValueDiv",
+                "hx-get": "condition-value-fields",
             },
         ),
     )

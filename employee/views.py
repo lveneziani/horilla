@@ -44,6 +44,7 @@ from base.methods import (
     check_manager,
     check_owner,
     choosesubordinates,
+    closest_numbers,
     filtersubordinates,
     filtersubordinatesemployeemodel,
     get_key_instances,
@@ -260,8 +261,46 @@ def employee_view_individual(request, obj_id, **kwargs):
         AccountBlockUnblock.objects.exists()
         and AccountBlockUnblock.objects.first().is_enabled
     )
+    # Retrieve the filtered employees from the session
+    filtered_employee_ids = request.session.get("filtered_employees", [])
+    filtered_employees = Employee.objects.filter(id__in=filtered_employee_ids)
+
+    request_ids_str = json.dumps(
+        [
+            instance.id
+            for instance in paginator_qry(
+                filtered_employees, request.GET.get("page")
+            ).object_list
+        ]
+    )
+
+    # Convert the string to an actual list of integers
+    requests_ids = (
+        ast.literal_eval(request_ids_str)
+        if isinstance(request_ids_str, str)
+        else request_ids_str
+    )
+
+    employee_id = employee.id
+
+    for index, req_id in enumerate(requests_ids):
+        if req_id == employee_id:
+
+            if index == len(requests_ids) - 1:
+                next_id = None
+            else:
+                next_id = requests_ids[index + 1]
+            if index == 0:
+                previous_id = None
+            else:
+                previous_id = requests_ids[index - 1]
+            break
+
     context = {
         "employee": employee,
+        "previous": previous_id,
+        "next": next_id,
+        "requests_ids": requests_ids,
         "current_date": date.today(),
         "leave_request_ids": leave_request_ids,
         "enabled_block_unblock": enabled_block_unblock,
@@ -1089,6 +1128,7 @@ def employee_view(request):
     view_type = request.GET.get("view")
     previous_data = request.GET.urlencode()
     page_number = request.GET.get("page")
+    error_message = request.session.pop("error_message", None)
     queryset = (
         Employee.objects.filter(is_active=True)
         if isinstance(request.GET, QueryDict) and not request.GET
@@ -1101,6 +1141,9 @@ def employee_view(request):
     data_dict = parse_qs(previous_data)
     get_key_instances(Employee, data_dict)
     emp = Employee.objects.filter()
+
+    # Store the employees in the session
+    request.session["filtered_employees"] = [employee.id for employee in queryset]
 
     return render(
         request,
@@ -1116,6 +1159,7 @@ def employee_view(request):
             "filter_dict": data_dict,
             "emp": emp,
             "gp_fields": EmployeeReGroup.fields,
+            "error_message": error_message,
         },
     )
 
@@ -1789,6 +1833,10 @@ def employee_filter_view(request):
     else:
         employees = sortby(request, employees, "orderby")
         employees = paginator_qry(employees, page_number)
+
+        # Store the employees in the session
+        request.session["filtered_employees"] = [employee.id for employee in employees]
+
     return render(
         request,
         template,
@@ -1940,10 +1988,11 @@ def employee_delete(request, obj_id):
         model_verbose_names_set = set()
         for obj in e.protected_objects:
             model_verbose_names_set.add(__(obj._meta.verbose_name.capitalize()))
-        model_names_str = ", ".join(model_verbose_names_set)
-        messages.error(
-            request, _("This employee already related in {}.".format(model_names_str))
-        )
+        model_names_str = ", - ".join(model_verbose_names_set)
+        error_message = _("- {}.".format(model_names_str))
+        error_message = str(error_message)
+        request.session["error_message"] = error_message
+        return redirect(employee_view)
     return HttpResponseRedirect(request.META.get("HTTP_REFERER", f"/view={view}"))
 
 
@@ -3429,7 +3478,7 @@ def redeem_points(request, emp_id):
                 description=f"{user} want to redeem {points} points",
                 allowance_on=date.today(),
             )
-            return HttpResponseRedirect(request.META.get("HTTP_REFERER", "/"))
+            return HttpResponse("<script>window.location.reload();</script>")
     return render(
         request,
         "tabs/forms/redeem_points_form.html",

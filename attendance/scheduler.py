@@ -2,6 +2,7 @@ import datetime
 from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from django.utils import timezone
 
 
 def auto_check_out():
